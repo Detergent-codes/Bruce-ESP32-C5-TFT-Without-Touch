@@ -1,6 +1,7 @@
 ![Bruce Main Menu](./media/pictures/bruce_banner.jpg)
 
-# :shark: Bruce
+This is a unofficial custom code of the Bruce firmware.
+# :shark: Bruce (Custom build)
 
 Bruce is a versatile ESP32 firmware packed with offensive-security tools, built to make Red Team operations fast and portable.
 
