@@ -80,6 +80,18 @@ uint32_t alterOneColorChannel(uint32_t color, uint16_t newR, uint16_t newG, uint
 
 TaskHandle_t ledEffectTaskHandle = NULL;
 
+static void showRgbLeds() {
+#if defined(CONFIG_IDF_TARGET_ESP32C5)
+    uint8_t scale = FastLED.getBrightness();
+    uint8_t r = ((uint16_t)leds[0].r * scale) / 255;
+    uint8_t g = ((uint16_t)leds[0].g * scale) / 255;
+    uint8_t b = ((uint16_t)leds[0].b * scale) / 255;
+    rgbLedWriteOrdered(RGB_LED, LED_COLOR_ORDER_GRB, r, g, b);
+#else
+    FastLED.show();
+#endif
+}
+
 void ledEffectTask(void *pvParameters) {
     short hueStep = 360 / LED_COUNT;
     short offset = 0;
@@ -286,16 +298,18 @@ void ledEffectTask(void *pvParameters) {
             frame++;
         }
 
-        FastLED.show();
+        showRgbLeds();
         vTaskDelay(pdMS_TO_TICKS(50));
     }
 }
 
 void beginLed() {
+#if !defined(CONFIG_IDF_TARGET_ESP32C5)
 #ifdef RGB_LED_CLK
-    FastLED.<LED_TYPE, RGB_LED, RGB_LED_CLK, LED_ORDER>(leds, LED_COUNT);
+    FastLED.addLeds<LED_TYPE, RGB_LED, RGB_LED_CLK, LED_ORDER>(leds, LED_COUNT);
 #else
-
+    FastLED.addLeds<LED_TYPE, RGB_LED, LED_ORDER>(leds, LED_COUNT);
+#endif
 #endif
 
     /* The default FastLED driver takes over control of the RMT interrupt
@@ -336,9 +350,12 @@ void beginLed() {
         rmt_driver_uninstall(rmt_channel_t(FASTLED_ESP32_RMT_CHANNEL_0));
         rmt_driver_install(rmt_channel_t(FASTLED_ESP32_RMT_CHANNEL_0), 0, 0);
     */
-    ledSetup();
+    int bright = 255 * max(0, min(100, bruceConfig.ledBright)) / 100;
+    FastLED.setBrightness(bright);
+    leds[0] = bruceConfig.ledColor;
+    showRgbLeds();
 
-    setLedBrightness(bruceConfig.ledBright);
+    ledSetup();
 }
 
 void blinkLed(int blinkTime) {
@@ -363,7 +380,7 @@ void setLedColor(CRGB color) {
 #endif
     } else {
         for (int i = 0; i < LED_COUNT; i++) leds[i] = color;
-        FastLED.show();
+        showRgbLeds();
     }
 }
 
@@ -378,7 +395,7 @@ void setLedBrightness(int value) {
     value = max(0, min(100, value));
     int bright = 255 * value / 100;
     FastLED.setBrightness(bright);
-    FastLED.show();
+    showRgbLeds();
 }
 
 #define BrucePurple 9830500 // Custom purple color for Bruce

@@ -4,8 +4,14 @@
 #include "soc/soc_caps.h"
 #include <stdint.h>
 
-static const uint8_t LED_BUILTIN = 255;
-#define BUILTIN_LED LED_BUILTIN
+#define PIN_RGB_LED 27
+// BUILTIN_LED can be used in new Arduino API digitalWrite() like in Blink.ino
+static const uint8_t LED_BUILTIN = SOC_GPIO_PIN_COUNT + PIN_RGB_LED;
+#define BUILTIN_LED LED_BUILTIN // backward compatibility
+#define LED_BUILTIN LED_BUILTIN // allow testing #ifdef LED_BUILTIN
+// RGB_BUILTIN and RGB_BRIGHTNESS can be used in new Arduino API rgbLedWrite()
+#define RGB_BUILTIN LED_BUILTIN
+#define RGB_BRIGHTNESS 64
 
 static const uint8_t TX = 11;
 static const uint8_t RX = 12;
@@ -41,7 +47,7 @@ static const uint8_t LP_TX = 11;
 
 #define HAS_RGB_LED 1
 #define LED_ORDER GRB
-#define LED_TYPE_IS_RGBW 1
+#define LED_TYPE_IS_RGBW 0
 #define LED_COUNT 1
 #define LED_TYPE WS2812
 #define LED_COLOR_STEP 15
@@ -65,9 +71,26 @@ static const uint8_t LP_TX = 11;
 #define ROTATION 1
 #define MINBRIGHT (uint8_t)1
 #define USER_SETUP_LOADED 1
+/* ---------------------   */
+// Setup for ST7789 170x320
+
+// #define ST7789_DRIVER 1
+// #define TFT_RGB_ORDER 0
+// #define TFT_WIDTH 170
+// #define TFT_HEIGHT 320
+
+/* ---------------------   */
+// Setup for ST7789 240x320
+
+// #define ST7789_DRIVER=1
+// #define TFT_WIDTH=240
+// #define TFT_HEIGHT=320
+// // #define TFT_INVERSION_ON
+// #define TFT_RGB_ORDER=TFT_BGR
 
 /* ---------------------   */
 // Setup for ILI9341 320x240 (no touch)
+
 #define ILI9341_DRIVER 1
 #define TFT_HEIGHT 320
 #define TFT_WIDTH 240
@@ -78,29 +101,30 @@ static const uint8_t LP_TX = 11;
 #define TFT_BL 25
 #define TFT_RST -1
 #define TFT_DC 24
-#define TFT_MISO 2
+#define TFT_MISO 2 // set to share SPI with other devices
 #define TFT_MOSI 7
 #define TFT_SCLK 6
 #define TFT_CS 23
+// #define TOUCH_CS 1
 #define SMOOTH_FONT 1
 #define SPI_FREQUENCY 20000000
 #define SPI_READ_FREQUENCY 20000000
+// #define SPI_TOUCH_FREQUENCY 2500000
 
 /*  Peripheral settings  */
 // Bad USB with CH9329
 #define BAD_RX 4
 #define BAD_TX 5
+// GPS Bus
+#define GPS_SERIAL_TX 5
+#define GPS_SERIAL_RX 4
 
-// GPS Bus (Moved to 11/12 to prevent collision with RTC)
-#define GPS_SERIAL_TX 11
-#define GPS_SERIAL_RX 12
-
-// Buttons (Touch disabled, physical buttons forced ON)
+// Buttons
 #define HAS_3_BUTTONS
 #define SEL_BTN 28
 #define DW_BTN 1
 #define UP_BTN 0
-#define BTN_ACT LOW // LOW means internal pull-ups are used!
+#define BTN_ACT LOW
 #define DEEPSLEEP_WAKEUP_PIN SEL_BTN
 
 // InfraRed
@@ -108,13 +132,11 @@ static const uint8_t LP_TX = 11;
 #define TXLED 3
 #define LED_ON HIGH
 #define LED_OFF LOW
-
 // SDCard
 #define SDCARD_CS 10
 #define SDCARD_SCK SPI_SCK_PIN
 #define SDCARD_MISO SPI_MISO_PIN
 #define SDCARD_MOSI SPI_MOSI_PIN
-
 // CC1101
 #define CC1101_GDO0_PIN 8
 #define CC1101_SS_PIN 9
