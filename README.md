@@ -1,6 +1,8 @@
 ![Bruce Main Menu](./media/pictures/bruce_banner.jpg)
 
-# :shark: Bruce
+# :shark: Bruce (Unofficial build)
+
+Custom build of Bruce for the ESP32 C5
 
 Bruce is a versatile ESP32 firmware packed with offensive-security tools, built to make Red Team operations fast and portable.
 
