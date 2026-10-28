@@ -394,8 +394,8 @@ bool wifiConnecttoKnownNet(void) {
 }
 
 void updateTimezoneTask(void *pvParameters) {
-    // Wait a bit for connection to stabilize before updating timezone
-    vTaskDelay(5000 / portTICK_PERIOD_MS);
+    // Wait briefly for DHCP/routing to settle before updating timezone
+    vTaskDelay(1500 / portTICK_PERIOD_MS);
 
     // Only update timezone if WiFi is still connected
     if (WiFi.isConnected() && wifiConnected) { updateClockTimezone(); }

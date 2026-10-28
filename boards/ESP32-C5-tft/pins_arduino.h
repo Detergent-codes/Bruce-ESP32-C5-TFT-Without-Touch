@@ -19,8 +19,8 @@ static const uint8_t RX = 12;
 static const uint8_t USB_DM = 13;
 static const uint8_t USB_DP = 14;
 
-static const uint8_t SDA = 4;
-static const uint8_t SCL = 5;
+static const uint8_t SDA = 8;
+static const uint8_t SCL = 9;
 
 static const uint8_t SS = 10;
 static const uint8_t MOSI = 7;
@@ -58,13 +58,21 @@ static const uint8_t LP_TX = 11;
 #define SERIAL_TX 11
 #define SERIAL_RX 12
 // I2C
-#define GROVE_SDA 4
-#define GROVE_SCL 5
+#define GROVE_SDA 8
+#define GROVE_SCL 9
+#define SYS_I2C_SDA 8
+#define SYS_I2C_SCL 9
+
+// RTC
+#define HAS_RTC 1
+#define HAS_RTC_DS3231 1
+#define RTC_SDA 8
+#define RTC_SCL 9
 // SPI
 #define SPI_SCK_PIN 6
 #define SPI_MOSI_PIN 7
 #define SPI_MISO_PIN 2
-#define SPI_SS_PIN 9
+#define SPI_SS_PIN -1
 
 /* TFT definitions */
 #define HAS_SCREEN 1
@@ -137,21 +145,21 @@ static const uint8_t LP_TX = 11;
 #define SDCARD_SCK SPI_SCK_PIN
 #define SDCARD_MISO SPI_MISO_PIN
 #define SDCARD_MOSI SPI_MOSI_PIN
-// CC1101
-#define CC1101_GDO0_PIN 8
-#define CC1101_SS_PIN 9
+// CC1101 (disabled by default on ESP32-C5-TFT)
+#define CC1101_GDO0_PIN -1
+#define CC1101_SS_PIN -1
 #define CC1101_MOSI_PIN SPI_MOSI_PIN
 #define CC1101_SCK_PIN SPI_SCK_PIN
 #define CC1101_MISO_PIN SPI_MISO_PIN
-// NRF24
-#define NRF24_CE_PIN 8
-#define NRF24_SS_PIN 9
+// NRF24 (disabled by default on ESP32-C5-TFT)
+#define NRF24_CE_PIN -1
+#define NRF24_SS_PIN -1
 #define NRF24_MOSI_PIN SPI_MOSI_PIN
 #define NRF24_SCK_PIN SPI_SCK_PIN
 #define NRF24_MISO_PIN SPI_MISO_PIN
-// Ethernet
-#define W5500_INT_PIN 8
-#define W5500_SS_PIN 9
+// Ethernet (disabled by default on ESP32-C5-TFT)
+#define W5500_INT_PIN -1
+#define W5500_SS_PIN -1
 #define W5500_MOSI_PIN SPI_MOSI_PIN
 #define W5500_SCK_PIN SPI_SCK_PIN
 #define W5500_MISO_PIN SPI_MISO_PIN

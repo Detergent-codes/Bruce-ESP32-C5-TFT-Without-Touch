@@ -1,6 +1,11 @@
+#include "core/bus_HAL.h"
 #include "core/powerSave.h"
 #include "core/utils.h"
+#include <globals.h>
 #include <interface.h>
+#if defined(SOC_USB_SERIAL_JTAG_SUPPORTED) && SOC_USB_SERIAL_JTAG_SUPPORTED
+#include "soc/usb_serial_jtag_struct.h"
+#endif
 
 /***************************************************************************************
 ** Function name: _setup_gpio()
@@ -8,6 +13,13 @@
 ** Description:   initial setup for the device
 ***************************************************************************************/
 void _setup_gpio() {
+    pinMode(SYS_I2C_SDA, INPUT_PULLUP);
+    pinMode(SYS_I2C_SCL, INPUT_PULLUP);
+    Wire.begin(SYS_I2C_SDA, SYS_I2C_SCL);
+    setSysI2CBus(&Wire);
+#if defined(HAS_RTC)
+    _rtc.setWire(&Wire);
+#endif
 
     pinMode(TFT_CS, OUTPUT);
     digitalWrite(TFT_CS, HIGH);
@@ -26,16 +38,23 @@ void _setup_gpio() {
     pinMode(SEL_BTN, INPUT_PULLUP);
     pinMode(DW_BTN, INPUT_PULLUP);
 #endif
+#if defined(NRF24_SS_PIN) && (NRF24_SS_PIN >= 0)
     pinMode(NRF24_SS_PIN, OUTPUT);
-    pinMode(CC1101_SS_PIN, OUTPUT);
-    pinMode(SDCARD_CS, OUTPUT);
-    pinMode(W5500_SS_PIN, OUTPUT);
-    pinMode(TFT_CS, OUTPUT);
-
     digitalWrite(NRF24_SS_PIN, HIGH);
+#endif
+#if defined(CC1101_SS_PIN) && (CC1101_SS_PIN >= 0)
+    pinMode(CC1101_SS_PIN, OUTPUT);
     digitalWrite(CC1101_SS_PIN, HIGH);
+#endif
+#if defined(SDCARD_CS) && (SDCARD_CS >= 0)
+    pinMode(SDCARD_CS, OUTPUT);
     digitalWrite(SDCARD_CS, HIGH);
+#endif
+#if defined(W5500_SS_PIN) && (W5500_SS_PIN >= 0)
+    pinMode(W5500_SS_PIN, OUTPUT);
     digitalWrite(W5500_SS_PIN, HIGH);
+#endif
+    pinMode(TFT_CS, OUTPUT);
     digitalWrite(TFT_CS, HIGH);
 #ifdef ILI9341_DRIVER
     bruceConfig.colorInverted = 0;

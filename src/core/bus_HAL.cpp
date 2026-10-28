@@ -227,7 +227,13 @@ TwoWire *acquireI2CBus(int8_t sda, int8_t scl) {
     // the same Wire used by sys_i2c, reconfiguring its pins on demand (like AUX_SPI below).
     TwoWire *wire = &Wire;
 #endif
-    if (userWire != wire || activeSda != sda || activeScl != scl) { wire->begin(sda, scl); }
+    if (userWire != wire || activeSda != sda || activeScl != scl) {
+        if (sda >= 0 && scl >= 0) {
+            pinMode(sda, INPUT_PULLUP);
+            pinMode(scl, INPUT_PULLUP);
+            wire->begin(sda, scl);
+        }
+    }
     userWire = wire;
     userBusShared = false;
     activeSda = sda;
@@ -243,6 +249,16 @@ void releaseI2CBus() {
     BUSHAL_DBG("[busHAL] release(): userBusShared=%d userWire=%p\n", (int)userBusShared, (void *)userWire);
     if (userBusShared) return;
     if (userWire == nullptr) return;
+#if !defined(BRUCE_HAS_DUAL_I2C)
+    // On single-I2C boards, Wire is shared with sys_i2c and RTC.
+    // Do not call Wire.end() on the only hardware I2C port!
+    if (userWire == &Wire || userWire == sysWire) {
+        userWire = nullptr;
+        activeSda = -1;
+        activeScl = -1;
+        return;
+    }
+#endif
     if (!releaseBoardI2CBus(userWire)) {
         BUSHAL_DBG("[busHAL] release(): calling userWire->end()\n");
         userWire->end();

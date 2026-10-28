@@ -136,6 +136,8 @@ struct tm *timeInfo;
 #if defined(HAS_RTC)
 #if defined(HAS_RTC_PCF85063A)
 pcf85063_RTC _rtc;
+#elif defined(HAS_RTC_DS3231)
+ds3231_RTC _rtc;
 #else
 cplus_RTC _rtc;
 #endif
@@ -378,6 +380,9 @@ void init_clock() {
 #if defined(HAS_RTC_PCF85063A)
     _rtc.GetPcf85063Time();
 #endif
+#if defined(HAS_RTC_DS3231)
+    _rtc.GetDs3231Time();
+#endif
     _rtc.GetTime(&_time);
     _rtc.GetDate(&_date);
 
@@ -385,9 +390,9 @@ void init_clock() {
     timeinfo.tm_sec = _time.Seconds;
     timeinfo.tm_min = _time.Minutes;
     timeinfo.tm_hour = _time.Hours;
-    timeinfo.tm_mday = _date.Date;
+    timeinfo.tm_mday = _date.Date > 0 ? _date.Date : 1;
     timeinfo.tm_mon = _date.Month > 0 ? _date.Month - 1 : 0;
-    timeinfo.tm_year = _date.Year >= 1900 ? _date.Year - 1900 : 0;
+    timeinfo.tm_year = _date.Year >= 1900 ? _date.Year - 1900 : (CURRENT_YEAR - 1900);
     time_t epoch = mktime(&timeinfo);
     struct timeval tv = {.tv_sec = epoch};
     settimeofday(&tv, nullptr);
@@ -493,6 +498,20 @@ void setup() {
     begin_storage();
     RAM_LOG("after-storage"); // bruceConfig/bruceConfigPins loaded from FS
     begin_tft();
+#if defined(ESP32C5_DEVKITC_1_TFT)
+    // Re-bind Wire and RTC to the loaded I2C pins from configuration
+    if (bruceConfigPins.i2c_bus.sda >= 0 && bruceConfigPins.i2c_bus.scl >= 0) {
+        Wire.end();
+        pinMode(bruceConfigPins.i2c_bus.sda, INPUT_PULLUP);
+        pinMode(bruceConfigPins.i2c_bus.scl, INPUT_PULLUP);
+        Wire.begin(bruceConfigPins.i2c_bus.sda, bruceConfigPins.i2c_bus.scl);
+        setSysI2CBus(&Wire);
+#if defined(HAS_RTC)
+        _rtc.setPins(bruceConfigPins.i2c_bus.sda, bruceConfigPins.i2c_bus.scl);
+        _rtc.setWire(&Wire);
+#endif
+    }
+#endif
     init_clock();
     init_led();
     RAM_LOG("after-tft-clock-led");

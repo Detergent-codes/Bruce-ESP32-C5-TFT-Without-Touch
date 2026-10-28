@@ -29,6 +29,9 @@ extern io_expander ioExpander;
 #if defined(HAS_RTC_PCF85063A)
 #include "../lib/RTC/pcf85063_RTC.h"
 extern pcf85063_RTC _rtc;
+#elif defined(HAS_RTC_DS3231)
+#include "../lib/RTC/ds3231_RTC.h"
+extern ds3231_RTC _rtc;
 #else
 #include "../lib/RTC/cplus_RTC.h"
 extern cplus_RTC _rtc;

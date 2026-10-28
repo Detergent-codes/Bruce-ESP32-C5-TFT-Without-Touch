@@ -1,6 +1,8 @@
 #include "configPins.h"
 #include "esp_mac.h"
 #include "sd_functions.h"
+#include "bus_HAL.h"
+#include <Wire.h>
 #include <globals.h>
 String getMacAddress() {
     uint8_t mac[6];
@@ -212,7 +214,16 @@ void BruceConfigPins::fromJson(JsonObject obj) {
     //     log_e("Fail");
     // }
     if (!root["i2c_bus"].isNull()) {
-#if defined(SOC_HP_I2C_NUM) && SOC_HP_I2C_NUM < 2 && SYS_I2C_SDA >= 0 && SYS_I2C_SCL >= 0 && \
+#if defined(ESP32C5_DEVKITC_1_TFT)
+        i2c_bus.fromJson(root["i2c_bus"].as<JsonObject>());
+        if (i2c_bus.sda == 13 || i2c_bus.sda == 4 || i2c_bus.sda < 0 ||
+            i2c_bus.scl == 14 || i2c_bus.scl == 5 || i2c_bus.scl < 0) {
+            i2c_bus.sda = (gpio_num_t)SYS_I2C_SDA;
+            i2c_bus.scl = (gpio_num_t)SYS_I2C_SCL;
+            count++;
+        }
+        sys_i2c = i2c_bus;
+#elif defined(SOC_HP_I2C_NUM) && SOC_HP_I2C_NUM < 2 && SYS_I2C_SDA >= 0 && SYS_I2C_SCL >= 0 && \
     !defined(BRUCE_BOARD_HAS_SOFTWARE_I2C)
         log_e("I2C Pins cannot be changed on this board, using default values");
         i2c_bus = sys_i2c;
@@ -279,7 +290,7 @@ void BruceConfigPins::toJson(JsonObject obj) const {
     JsonObject _ST25R = root["ST25R_Pins"].to<JsonObject>();
     ST25R_bus.toJson(_ST25R);
 #endif
-    JsonObject _si2c = root["sys_i2c"].as<JsonObject>();
+    JsonObject _si2c = root["sys_i2c"].to<JsonObject>();
     sys_i2c.toJson(_si2c);
     JsonObject _di2c = root["i2c_bus"].to<JsonObject>();
     i2c_bus.toJson(_di2c);
@@ -451,7 +462,23 @@ void BruceConfigPins::setSpiPins(SPIPins value) {
 
 void BruceConfigPins::setI2CPins(I2CPins value) {
     validateI2CPins(value);
+    i2c_bus = value;
+    sys_i2c = value;
     saveFile();
+#if defined(HAS_RTC)
+    Wire.end();
+    if (value.sda >= 0 && value.scl >= 0) {
+        pinMode(value.sda, INPUT_PULLUP);
+        pinMode(value.scl, INPUT_PULLUP);
+        Wire.begin(value.sda, value.scl);
+    } else {
+        Wire.begin();
+    }
+    setSysI2CBus(&Wire);
+    _rtc.setPins(value.sda, value.scl);
+    _rtc.setWire(&Wire);
+    _rtc.begin();
+#endif
 }
 
 void BruceConfigPins::setUARTPins(UARTPins value) {

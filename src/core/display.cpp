@@ -928,14 +928,18 @@ void drawStatusBar() {
     }
 
     if (clock_set) {
-        setTftDisplay(12, 12, bruceConfig.priColor, 1, bruceConfig.bgColor);
-        tft.fillRect(12, 12, 60, LH, bruceConfig.bgColor);
+        static char lastTimeStr[16] = {0};
 #if defined(HAS_RTC)
         updateTimeStr(_rtc.getTimeStruct());
 #else
         updateTimeStr(rtc.getTimeStruct());
 #endif
-        tft.print(timeStr);
+        if (strcmp(timeStr, lastTimeStr) != 0) {
+            strncpy(lastTimeStr, timeStr, sizeof(lastTimeStr));
+            setTftDisplay(12, 12, bruceConfig.priColor, 1, bruceConfig.bgColor);
+            tft.fillRect(12, 12, 80, LH, bruceConfig.bgColor);
+            tft.print(timeStr);
+        }
     } else {
         setTftDisplay(12, 12, bruceConfig.priColor, 1, bruceConfig.bgColor);
         tft.print("BRUCE " + String(BRUCE_VERSION));

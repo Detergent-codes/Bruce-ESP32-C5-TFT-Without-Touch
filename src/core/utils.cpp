@@ -2,6 +2,7 @@
 #include "core/wifi/wifi_common.h" //to return MAC addr
 #include "scrollableTextArea.h"
 #include <Preferences.h>
+#include <esp_sntp.h>
 #include <globals.h>
 
 /*********************************************************************
@@ -65,30 +66,108 @@ int getBattery() {
     return 0;
 }
 
-void updateClockTimezone() {
-    timeClient.begin();
-    timeClient.update();
-
-    timeClient.setTimeOffset(bruceConfig.tmz * 3600);
-
-    localTime = timeClient.getEpochTime() + (bruceConfig.dst ? 3600 : 0);
+static void applyTimeinfoToRtc(struct tm &timeinfo) {
+    localTime = mktime(&timeinfo);
 
 #if defined(HAS_RTC)
-    struct tm *timeinfo = localtime(&localTime);
     RTC_TimeTypeDef TimeStruct;
-    TimeStruct.Hours = timeinfo->tm_hour;
-    TimeStruct.Minutes = timeinfo->tm_min;
-    TimeStruct.Seconds = timeinfo->tm_sec;
+    TimeStruct.Hours = timeinfo.tm_hour;
+    TimeStruct.Minutes = timeinfo.tm_min;
+    TimeStruct.Seconds = timeinfo.tm_sec;
+
+    RTC_DateTypeDef DateStruct;
+    DateStruct.Date = timeinfo.tm_mday;
+    DateStruct.WeekDay = timeinfo.tm_wday == 0 ? 7 : timeinfo.tm_wday;
+    DateStruct.Month = timeinfo.tm_mon + 1;
+    DateStruct.Year = timeinfo.tm_year + 1900;
+
+#if defined(HAS_RTC_DS3231)
+    _rtc.setTimeDate(
+        TimeStruct.Seconds,
+        TimeStruct.Minutes,
+        TimeStruct.Hours,
+        DateStruct.WeekDay,
+        DateStruct.Date,
+        DateStruct.Month,
+        DateStruct.Year
+    );
+#else
     _rtc.SetTime(&TimeStruct);
+    _rtc.SetDate(&DateStruct);
+#endif
+
     updateTimeStr(_rtc.getTimeStruct());
 #else
     rtc.setTime(localTime);
     updateTimeStr(rtc.getTimeStruct());
-    clock_set = true;
 #endif
-    // Update Internal clock to system time
+
+    clock_set = true;
     struct timeval tv = {.tv_sec = localTime};
     settimeofday(&tv, nullptr);
+    Serial.printf("[NTP] Synced & saved to RTC: %02d:%02d:%02d %04d-%02d-%02d\n",
+        timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec,
+        timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday);
+}
+
+static void onSntpTimeSync(struct timeval *tv) {
+    if (!tv || tv->tv_sec < 1700000000) return;
+    struct tm timeinfo = {0};
+    localtime_r(&tv->tv_sec, &timeinfo);
+    if (timeinfo.tm_year >= (2024 - 1900)) {
+        applyTimeinfoToRtc(timeinfo);
+    }
+}
+
+void updateClockTimezone() {
+    long gmtOffset = (long)(bruceConfig.tmz * 3600.0f + (bruceConfig.dst ? 3600 : 0));
+
+    struct tm timeinfo = {0};
+    bool synced = false;
+
+    // 1. Direct UDP NTP query across multiple servers (never reads local pre-existing system clock)
+    static const char *ntpPools[] = {"time.google.com", "time.cloudflare.com", "pool.ntp.org"};
+    timeClient.begin();
+    timeClient.setTimeOffset(gmtOffset);
+    for (int retry = 0; retry < 6 && !synced; retry++) {
+        timeClient.setPoolServerName(ntpPools[retry % 3]);
+        if (timeClient.forceUpdate()) {
+            unsigned long epoch = timeClient.getEpochTime();
+            if (epoch > 1700000000UL) {
+                time_t t_epoch = (time_t)epoch;
+                // timeClient.getEpochTime() already includes gmtOffset, so unpack with gmtime_r
+                if (gmtime_r(&t_epoch, &timeinfo) && timeinfo.tm_year >= (2024 - 1900)) {
+                    synced = true;
+                    break;
+                }
+            }
+        }
+        vTaskDelay(pdMS_TO_TICKS(150));
+    }
+
+    // 2. Fallback to LWIP SNTP with explicit sync-status check and async callback
+    if (!synced) {
+        esp_sntp_set_time_sync_notification_cb(onSntpTimeSync);
+        esp_sntp_set_sync_status(SNTP_SYNC_STATUS_RESET);
+        configTime(gmtOffset, 0, "time.google.com", "time.cloudflare.com", "pool.ntp.org");
+
+        for (int i = 0; i < 25; i++) {
+            if (esp_sntp_get_sync_status() == SNTP_SYNC_STATUS_COMPLETED) {
+                if (getLocalTime(&timeinfo, 200) && timeinfo.tm_year >= (2024 - 1900)) {
+                    synced = true;
+                    break;
+                }
+            }
+            vTaskDelay(pdMS_TO_TICKS(150));
+        }
+    }
+
+    if (!synced || timeinfo.tm_year < (2024 - 1900)) {
+        log_w("NTP sync could not obtain valid time");
+        return;
+    }
+
+    applyTimeinfoToRtc(timeinfo);
 }
 
 #if !defined(HAS_RTC)

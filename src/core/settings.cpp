@@ -798,6 +798,9 @@ void setClock() {
 #if defined(HAS_RTC_PCF85063A)
     _rtc.GetPcf85063Time();
 #endif
+#if defined(HAS_RTC_DS3231)
+    _rtc.GetDs3231Time();
+#endif
 #endif
 
     options = {
@@ -949,9 +952,9 @@ void setClock() {
         timeinfo.tm_sec = _time.Seconds;
         timeinfo.tm_min = _time.Minutes;
         timeinfo.tm_hour = _time.Hours;
-        timeinfo.tm_mday = _date.Date;
+        timeinfo.tm_mday = _date.Date > 0 ? _date.Date : 1;
         timeinfo.tm_mon = _date.Month > 0 ? _date.Month - 1 : 0;
-        timeinfo.tm_year = _date.Year >= 1900 ? _date.Year - 1900 : 0;
+        timeinfo.tm_year = _date.Year >= 1900 ? _date.Year - 1900 : (CURRENT_YEAR - 1900);
         time_t epoch = mktime(&timeinfo);
         struct timeval tv = {.tv_sec = epoch};
         settimeofday(&tv, nullptr);
@@ -977,6 +980,9 @@ void runClockLoop(bool showMenuHint) {
 #endif
 #if defined(HAS_RTC_PCF85063A)
     _rtc.GetPcf85063Time();
+#endif
+#if defined(HAS_RTC_DS3231)
+    _rtc.GetDs3231Time();
 #endif
     _rtc.GetTime(&_time);
 #endif
@@ -1577,10 +1583,12 @@ RELOAD:
 **  Main Menu to manually set SPI Pins
 **********************************************************************/
 void setI2CPinsMenu(BruceConfigPins::I2CPins &value) {
-#if defined(SOC_HP_I2C_NUM) && SOC_HP_I2C_NUM < 2 && SYS_I2C_SDA >= 0 && SYS_I2C_SCL >= 0
+#if defined(ESP32C5_DEVKITC_1_TFT)
+    // Allowed on ESP32-C5-TFT
+#elif defined(SOC_HP_I2C_NUM) && SOC_HP_I2C_NUM < 2 && SYS_I2C_SDA >= 0 && SYS_I2C_SCL >= 0
     displayError("I2C Pins cannot be changed on this board", true);
     return;
-#else
+#endif
     uint8_t opt = 0;
     bool changed = false;
     BruceConfigPins::I2CPins points = value;
@@ -1617,7 +1625,6 @@ RELOAD:
         changed = true;
         goto RELOAD;
     }
-#endif
 }
 
 /*********************************************************************
