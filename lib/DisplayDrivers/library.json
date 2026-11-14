@@ -1,0 +1,39 @@
+{
+  "name": "DisplayDrivers",
+  "version": "0.0.2",
+  "description": "One display API over Arduino_GFX, LovyanGFX, TFT_eSPI, M5GFX, EPD Painter and GxEPD2, plus a headless no-op backend. Pick one with a build flag and the same tft_display / tft_sprite calls drive an LCD, an OLED, an AMOLED, an RGB/DSI panel, an e-paper — or nothing at all, on boards with no display.",
+  "keywords": [
+    "display",
+    "tft",
+    "lcd",
+    "oled",
+    "epaper",
+    "esp32",
+    "hal"
+  ],
+  "license": "MIT AND GPL-3.0-or-later",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bmorcelli/DisplayDrivers.git"
+  },
+  "authors": [
+    {
+      "name": "bmorcelli",
+      "url": "https://github.com/bmorcelli",
+      "maintainer": true
+    }
+  ],
+  "headers": "DisplayDrivers.h",
+  "frameworks": [
+    "arduino",
+    "espidf",
+    "*"
+  ],
+  "platforms": [
+    "espressif32",
+    "native"
+  ],
+  "build": {
+    "libArchive": false
+  }
+}

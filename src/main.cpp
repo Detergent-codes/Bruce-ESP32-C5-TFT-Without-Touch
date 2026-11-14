@@ -14,6 +14,13 @@
 #include <functional>
 #include <string>
 #include <vector>
+// Native RF decoding runs beneath the menu callbacks on loopTask. The default
+// 8 KiB stack overflows on the full protocol path (including RAW fallback).
+// Keep the smaller framework default on Lite builds without stream codecs.
+#if !defined(LITE_VERSION)
+SET_LOOP_TASK_STACK_SIZE(16 * 1024);
+#endif
+
 io_expander ioExpander;
 BruceConfig bruceConfig;
 BruceConfigPins bruceConfigPins;
@@ -26,13 +33,24 @@ StartupApp startupApp;
 String startupAppJSInterpreterFile = "";
 
 MainMenu mainMenu;
-SPIClass sdcardSPI;
-#ifdef USE_HSPI_PORT
 #ifndef VSPI
 #define VSPI FSPI
 #endif
+#ifdef USE_HSPI_PORT
+// The display owns HSPI (SPIClass() defaults to HSPI): mounting the SD on it would re-route the
+// HSPI MISO input to the SD card's pin and break every device that shares the display MISO
+// (e.g. the XPT2046 touchscreen).
+SPIClass sdcardSPI(VSPI);
+// SPIClass sdcardSPI;
 SPIClass AUX_SPI(VSPI);
 #else
+// sdcardSPI and AUX_SPI must live on different SPI hosts: SPIClass's default constructor and
+// AUX_SPI(HSPI) both resolve to the same host, so once sdcardSPI has claimed it, calling
+// AUX_SPI.begin() on other pins (e.g. a shared XPT2046 touch bus) succeeds but never actually
+// reroutes that host's GPIO matrix -- every AUX_SPI consumer ends up talking over the SD card's
+// pins instead. Confirmed on the T-HMI: its shared touch bus read only 0x1FFF (floating) through
+// AUX_SPI while the exact same pins, driven bit-banged, answered the XPT2046 correctly.
+SPIClass sdcardSPI(VSPI);
 SPIClass AUX_SPI(HSPI);
 #endif
 
@@ -55,30 +73,12 @@ String menuOptionLabel = "";
 volatile int EncoderLedChange = 0;
 #endif
 
-TouchPoint touchPoint;
+BruceTouchPoint touchPoint;
+volatile bool touchZoneOutsideFooterEnabled = true;
 
 keyStroke KeyStroke;
 
 volatile int32_t RotaryNetSteps = 0;
-
-#ifdef HAS_ENCODER
-// Default no-op: boards that define HAS_ENCODER but don't implement
-// pollEncoder() (shouldn't happen, but keeps the linker happy either way).
-void __attribute__((weak)) pollEncoder(void) {}
-
-// Dedicated, high-priority, tight-cadence task that does nothing but sample
-// the rotary encoder A/B lines -- mirrors the Flipper port's input_srv,
-// which runs encoder_poll() on its own thread every 4ms, decoupled from
-// GUI/app work so the raw quadrature read is never delayed by rendering
-// or by whether the previous input event has been consumed yet. Only
-// exists on HAS_ENCODER boards; other boards pay zero cost for this.
-static void taskEncoderPoll(void *parameter) {
-    while (true) {
-        pollEncoder();
-        vTaskDelay(pdMS_TO_TICKS(4));
-    }
-}
-#endif
 
 TaskHandle_t xHandle;
 void __attribute__((weak)) taskInputHandler(void *parameter) {
@@ -90,6 +90,8 @@ void __attribute__((weak)) taskInputHandler(void *parameter) {
         // if AnyKeyPress is false, or rerun if it was not renewed within 75ms (arbitrary)
         // because AnyKeyPress will be true if didn´t passed through a check(bool var)
         if (!AnyKeyPress || millis() - timer > 75) {
+            // Held across the whole update so consumers never observe a half-written state
+            inputLock();
             NextPress = false;
             PrevPress = false;
             UpPress = false;
@@ -103,9 +105,8 @@ void __attribute__((weak)) taskInputHandler(void *parameter) {
             touchPoint.pressed = false;
             touchPoint.Clear();
             checkAndRecoverSysI2CBus();
-#ifndef USE_TFT_eSPI_TOUCH
             InputHandler();
-#endif
+            inputUnlock();
             timer = millis();
         }
         vTaskDelay(pdMS_TO_TICKS(10));
@@ -151,23 +152,15 @@ bool clock_set = false;
 
 std::vector<Option> options;
 // Protected global variables
-#if defined(HAS_SCREEN)
 tft_logger tft = tft_logger(); // Invoke custom library
 tft_sprite sprite = tft_sprite(&tft);
 tft_sprite draw = tft_sprite(&tft);
 volatile int tftWidth = TFT_HEIGHT;
 #ifdef HAS_TOUCH
-volatile int tftHeight =
-    TFT_WIDTH - 20; // 20px to draw the TouchFooter(), were the btns are being read in touch devices.
+volatile int tftHeight = TFT_WIDTH - TOUCH_FOOTER_HEIGHT; // reserved to draw the TouchFooter(), were the btns
+                                                          // are being read in touch devices.
 #else
 volatile int tftHeight = TFT_WIDTH;
-#endif
-#else
-tft_logger tft;
-SerialDisplayClass &sprite = tft;
-SerialDisplayClass &draw = tft;
-volatile int tftWidth = VECTOR_DISPLAY_DEFAULT_HEIGHT;
-volatile int tftHeight = VECTOR_DISPLAY_DEFAULT_WIDTH;
 #endif
 
 #include "core/bus_HAL.h"
@@ -222,6 +215,14 @@ void _pre_storage_gpio() __attribute__((weak));
 void _pre_storage_gpio() {}
 
 /*********************************************************************
+ **  Function: _late_setup_gpio()
+ **  Sets up a weak (empty) function for board fixes that must run
+ **  Runs right before animation
+ *********************************************************************/
+void _late_setup_gpio() __attribute__((weak));
+void _late_setup_gpio() {}
+
+/*********************************************************************
  **  Function: setup_gpio
  **  Setup GPIO pins
  *********************************************************************/
@@ -230,8 +231,16 @@ void setup_gpio() {
     // init setup from /ports/*/interface.h
     _setup_gpio();
 
-    // Smoochiee v2 uses a AW9325 tro control GPS, MIC, Vibro and CC1101 RX/TX powerlines
-    ioExpander.init(IO_EXPANDER_ADDRESS, &Wire);
+    // Freeze the board's generic wiring so post-storage hooks can tell their own defaults
+    // apart from values loaded from /brucePins.conf (see applyBoardDefault() in configPins.h).
+    brucePinsSetupDefaults = bruceConfigPins;
+
+    // IO expander (AW9523/PCA9555: Smoochiee, Reaper, T-Lora Pager, Mako, Pebble) switching GPS,
+    // MIC, Vibro, CC1101 RX/TX, NFC... powerlines. It is an onboard peripheral, so it lives on the
+    // sys_i2c bus each board registers in _setup_gpio() via setSysI2CBus(); &Wire only for a board
+    // that never declared sys_i2c.
+    bool hasSysI2C = bruceConfigPins.sys_i2c.sda >= 0 && bruceConfigPins.sys_i2c.scl >= 0;
+    ioExpander.init(IO_EXPANDER_ADDRESS, hasSysI2C ? getSysI2CBus() : &Wire);
 
     initCC1101once(acquireSPIBus(
         bruceConfigPins.CC1101_bus.sck, bruceConfigPins.CC1101_bus.miso, bruceConfigPins.CC1101_bus.mosi
@@ -251,7 +260,7 @@ void begin_tft() {
     tft.setRotation(bruceConfigPins.rotation);
     tftWidth = tft.width();
 #ifdef HAS_TOUCH
-    tftHeight = tft.height() - 20;
+    tftHeight = tft.height() - TOUCH_FOOTER_HEIGHT;
 #else
     tftHeight = tft.height();
 #endif
@@ -392,7 +401,7 @@ void init_clock() {
     timeinfo.tm_hour = _time.Hours;
     timeinfo.tm_mday = _date.Date > 0 ? _date.Date : 1;
     timeinfo.tm_mon = _date.Month > 0 ? _date.Month - 1 : 0;
-    timeinfo.tm_year = _date.Year >= 1900 ? _date.Year - 1900 : (CURRENT_YEAR - 1900);
+    timeinfo.tm_year = _date.Year >= 1900 ? _date.Year - 1900 : 124;
     time_t epoch = mktime(&timeinfo);
     struct timeval tv = {.tv_sec = epoch};
     settimeofday(&tv, nullptr);
@@ -427,13 +436,7 @@ void init_led() {
 void startup_sound() {
     if (bruceConfig.soundEnabled == 0) return; // if sound is disabled, do not play sound
 #if !defined(LITE_VERSION)
-#if defined(BUZZ_PIN)
-    // Bip M5 just because it can. Does not bip if splashscreen is bypassed
-    _tone(5000, 50);
-    delay(200);
-    _tone(5000, 50);
-    /*  2fix: menu infinite loop */
-#elif defined(HAS_NS4168_SPKR)
+#if defined(HAS_SPEAKER)
     // play a boot sound
     if (bruceConfig.theme.boot_sound) {
         playAudioFile(bruceConfig.themeFS(), bruceConfig.getThemeItemImg(bruceConfig.theme.paths.boot_sound));
@@ -442,6 +445,13 @@ void startup_sound() {
     } else if (LittleFS.exists("/boot.wav")) {
         playAudioFile(&LittleFS, "/boot.wav");
     }
+#else
+    // Bip M5 just because it can. Does not bip if splashscreen is bypassed.
+    // _tone() is a no-op while no buzzer pin is configured.
+    _tone(5000, 50);
+    delay(200);
+    _tone(5000, 50);
+    /*  2fix: menu infinite loop */
 #endif
 #endif
 }
@@ -483,7 +493,7 @@ void setup() {
     bruceConfig.bright = 100; // theres is no value yet
     bruceConfigPins.rotation = ROTATION;
     setup_gpio();
-#if defined(HAS_SCREEN)
+
     tft.init();
     tft.setRotation(bruceConfigPins.rotation);
     tft.fillScreen(TFT_BLACK);
@@ -491,27 +501,25 @@ void setup() {
     tft.setTextColor(TFT_PURPLE, TFT_BLACK);
     tft.drawCentreString("Booting", tft.width() / 2, tft.height() / 2, 1);
     RAM_LOG("first-display-elem"); // first element drawn on screen
-#else
-    tft.begin();
-#endif
+
     _pre_storage_gpio();
     begin_storage();
     RAM_LOG("after-storage"); // bruceConfig/bruceConfigPins loaded from FS
-    begin_tft();
 #if defined(ESP32C5_DEVKITC_1_TFT)
-    // Re-bind Wire and RTC to the loaded I2C pins from configuration
     if (bruceConfigPins.i2c_bus.sda >= 0 && bruceConfigPins.i2c_bus.scl >= 0) {
+        bruceConfigPins.sys_i2c = bruceConfigPins.i2c_bus;
         Wire.end();
         pinMode(bruceConfigPins.i2c_bus.sda, INPUT_PULLUP);
         pinMode(bruceConfigPins.i2c_bus.scl, INPUT_PULLUP);
         Wire.begin(bruceConfigPins.i2c_bus.sda, bruceConfigPins.i2c_bus.scl);
         setSysI2CBus(&Wire);
-#if defined(HAS_RTC)
+#if defined(HAS_RTC_DS3231)
         _rtc.setPins(bruceConfigPins.i2c_bus.sda, bruceConfigPins.i2c_bus.scl);
         _rtc.setWire(&Wire);
 #endif
     }
 #endif
+    begin_tft();
     init_clock();
     init_led();
     RAM_LOG("after-tft-clock-led");
@@ -541,7 +549,11 @@ void setup() {
     setBrightness(bruceConfig.bright, false);
     // end of post gpio begin
 
-    // #ifndef USE_TFT_eSPI_TOUCH
+    inputLockInit();
+#if defined(HAS_RESISTIVE_TOUCH)
+    // Runs before the input task exists; asks for the calibration when nothing is stored in the NVS
+    if (!loadTouchCalibration()) calibrateTouch();
+#endif
     // This task keeps running all the time, will never stop
     xTaskCreate(
         taskInputHandler,              // Task function
@@ -551,21 +563,8 @@ void setup() {
         2,                             // Task priority (0 to 3), loopTask has priority 2.
         &xHandle                       // Task handle (not used)
     );
-#ifdef HAS_ENCODER
-    // Dedicated encoder sampling task, higher priority than loopTask so a
-    // busy render/redraw pass can never delay reading the A/B lines.
-    // Only created on boards with a rotary encoder.
-    xTaskCreate(
-        taskEncoderPoll, // Task function
-        "EncoderPoll",   // Task Name
-        2048,            // Stack size
-        NULL,            // Task parameters
-        3,               // Task priority (0 to 3), higher than loopTask's 2
-        NULL             // Task handle (not used)
-    );
-#endif
-    // #endif
-#if defined(HAS_SCREEN)
+    _late_setup_gpio();
+#if !defined(USE_DUMMY_TFT)
     bruceConfig.openThemeFile(bruceConfig.themeFS(), bruceConfig.themePath, false);
     if (!bruceConfig.instantBoot) {
         boot_screen_anim();
@@ -598,7 +597,7 @@ void setup() {
  **  Function: loop
  **  Main loop
  **********************************************************************/
-#if defined(HAS_SCREEN)
+#if !defined(USE_DUMMY_TFT)
 void loop() {
 #if !defined(LITE_VERSION) && !defined(DISABLE_INTERPRETER)
     if (interpreter_state > 0) {

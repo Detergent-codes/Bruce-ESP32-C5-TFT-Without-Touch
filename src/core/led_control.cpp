@@ -78,8 +78,6 @@ uint32_t alterOneColorChannel(uint32_t color, uint16_t newR, uint16_t newG, uint
     return ((r << 16) | (g << 8) | b);
 }
 
-TaskHandle_t ledEffectTaskHandle = NULL;
-
 static void showRgbLeds() {
 #if defined(CONFIG_IDF_TARGET_ESP32C5)
     uint8_t scale = FastLED.getBrightness();
@@ -91,6 +89,8 @@ static void showRgbLeds() {
     FastLED.show();
 #endif
 }
+
+TaskHandle_t ledEffectTaskHandle = NULL;
 
 void ledEffectTask(void *pvParameters) {
     short hueStep = 360 / LED_COUNT;
@@ -350,12 +350,9 @@ void beginLed() {
         rmt_driver_uninstall(rmt_channel_t(FASTLED_ESP32_RMT_CHANNEL_0));
         rmt_driver_install(rmt_channel_t(FASTLED_ESP32_RMT_CHANNEL_0), 0, 0);
     */
-    int bright = 255 * max(0, min(100, bruceConfig.ledBright)) / 100;
-    FastLED.setBrightness(bright);
-    leds[0] = bruceConfig.ledColor;
-    showRgbLeds();
-
     ledSetup();
+
+    setLedBrightness(bruceConfig.ledBright);
 }
 
 void blinkLed(int blinkTime) {

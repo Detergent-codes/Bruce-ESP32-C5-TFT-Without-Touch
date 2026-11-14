@@ -1,0 +1,129 @@
+#######################################
+# Syntax Coloring Map For DisplayDrivers
+#######################################
+
+#######################################
+# Datatypes (KEYWORD1)
+#######################################
+
+tft_display	KEYWORD1
+tft_sprite	KEYWORD1
+
+#######################################
+# Methods and Functions (KEYWORD2)
+#######################################
+
+begin	KEYWORD2
+init	KEYWORD2
+display	KEYWORD2
+setRotation	KEYWORD2
+getRotation	KEYWORD2
+invertDisplay	KEYWORD2
+sleep	KEYWORD2
+
+drawPixel	KEYWORD2
+drawLine	KEYWORD2
+drawFastHLine	KEYWORD2
+drawFastVLine	KEYWORD2
+drawRect	KEYWORD2
+fillRect	KEYWORD2
+fillRectHGradient	KEYWORD2
+fillRectVGradient	KEYWORD2
+fillScreen	KEYWORD2
+drawRoundRect	KEYWORD2
+fillRoundRect	KEYWORD2
+drawCircle	KEYWORD2
+fillCircle	KEYWORD2
+drawTriangle	KEYWORD2
+fillTriangle	KEYWORD2
+drawEllipse	KEYWORD2
+fillEllipse	KEYWORD2
+drawArc	KEYWORD2
+drawWideLine	KEYWORD2
+drawXBitmap	KEYWORD2
+pushImage	KEYWORD2
+
+setCursor	KEYWORD2
+getCursorX	KEYWORD2
+getCursorY	KEYWORD2
+setTextSize	KEYWORD2
+getTextSize	KEYWORD2
+setTextColor	KEYWORD2
+getTextColor	KEYWORD2
+getTextBgColor	KEYWORD2
+setTextDatum	KEYWORD2
+getTextDatum	KEYWORD2
+setTextFont	KEYWORD2
+setTextWrap	KEYWORD2
+textWidth	KEYWORD2
+fontHeight	KEYWORD2
+drawString	KEYWORD2
+drawCentreString	KEYWORD2
+drawRightString	KEYWORD2
+
+setSwapBytes	KEYWORD2
+getSwapBytes	KEYWORD2
+color565	KEYWORD2
+width	KEYWORD2
+height	KEYWORD2
+native	KEYWORD2
+
+createSprite	KEYWORD2
+deleteSprite	KEYWORD2
+setColorDepth	KEYWORD2
+pushSprite	KEYWORD2
+pushToSprite	KEYWORD2
+
+setPaintGuard	KEYWORD2
+getConfig	KEYWORD2
+driver	KEYWORD2
+hibernate	KEYWORD2
+
+#######################################
+# Constants (LITERAL1)
+#######################################
+
+USE_ARDUINO_GFX	LITERAL1
+USE_LOVYANGFX	LITERAL1
+USE_TFT_ESPI	LITERAL1
+USE_M5GFX	LITERAL1
+USE_EPD_PAINTER	LITERAL1
+USE_GXEPD2	LITERAL1
+USE_DUMMY_TFT	LITERAL1
+USE_CANVAS	LITERAL1
+
+TFT_BLACK	LITERAL1
+TFT_NAVY	LITERAL1
+TFT_DARKGREEN	LITERAL1
+TFT_DARKCYAN	LITERAL1
+TFT_MAROON	LITERAL1
+TFT_PURPLE	LITERAL1
+TFT_OLIVE	LITERAL1
+TFT_LIGHTGREY	LITERAL1
+TFT_DARKGREY	LITERAL1
+TFT_BLUE	LITERAL1
+TFT_GREEN	LITERAL1
+TFT_CYAN	LITERAL1
+TFT_RED	LITERAL1
+TFT_MAGENTA	LITERAL1
+TFT_YELLOW	LITERAL1
+TFT_WHITE	LITERAL1
+TFT_ORANGE	LITERAL1
+TFT_GREENYELLOW	LITERAL1
+TFT_PINK	LITERAL1
+TFT_BROWN	LITERAL1
+TFT_GOLD	LITERAL1
+TFT_SILVER	LITERAL1
+TFT_SKYBLUE	LITERAL1
+TFT_VIOLET	LITERAL1
+TFT_TRANSPARENT	LITERAL1
+
+TL_DATUM	LITERAL1
+TC_DATUM	LITERAL1
+TR_DATUM	LITERAL1
+ML_DATUM	LITERAL1
+MC_DATUM	LITERAL1
+MR_DATUM	LITERAL1
+BL_DATUM	LITERAL1
+BC_DATUM	LITERAL1
+BR_DATUM	LITERAL1

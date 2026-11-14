@@ -1,0 +1,61 @@
+name: TestPad
+
+# Builds examples/TestPad once per backend. The sketch calls everything the
+# library publishes, so a red job means an API promise was broken — not that a
+# panel stopped working.
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: testpad-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: ${{ matrix.env }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        env:
+          - ardgfx
+          - lovyangfx
+          - tft_espi
+          - m5gfx
+          - epd_painter
+          - gxepd2
+          - dummy
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # Keyed on the backend as well: each env pulls a different graphics
+      # library, so one shared key would thrash.
+      - name: Cache PlatformIO
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio/.cache
+            ~/.platformio/packages
+            ~/.platformio/platforms
+          key: pio-${{ runner.os }}-${{ matrix.env }}-${{ hashFiles('examples/TestPad/platformio.ini') }}
+          restore-keys: |
+            pio-${{ runner.os }}-${{ matrix.env }}-
+            pio-${{ runner.os }}-
+
+      - name: Install PlatformIO
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --retries 5 --timeout 120 platformio
+
+      - name: Build ${{ matrix.env }}
+        working-directory: examples/TestPad
+        run: pio run -e ${{ matrix.env }}

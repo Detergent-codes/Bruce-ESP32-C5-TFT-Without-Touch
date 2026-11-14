@@ -1,12 +1,10 @@
 #include "configPins.h"
 #include "esp_mac.h"
 #include "sd_functions.h"
-#include "bus_HAL.h"
-#include <Wire.h>
 #include <globals.h>
 String getMacAddress() {
-    uint8_t mac[6];
-    esp_read_mac(mac, ESP_MAC_WIFI_STA);
+    uint8_t mac[6] = {0};
+    esp_read_mac(mac, ESP_MAC_BASE);
 
     char macStr[18];
     snprintf(
@@ -23,6 +21,8 @@ String getMacAddress() {
 
     return String(macStr);
 }
+
+BruceConfigPins brucePinsSetupDefaults;
 
 void BruceConfigPins::fromJson(JsonObject obj) {
     int count = 0;
@@ -214,21 +214,18 @@ void BruceConfigPins::fromJson(JsonObject obj) {
     //     log_e("Fail");
     // }
     if (!root["i2c_bus"].isNull()) {
-#if defined(ESP32C5_DEVKITC_1_TFT)
-        i2c_bus.fromJson(root["i2c_bus"].as<JsonObject>());
-        if (i2c_bus.sda == 13 || i2c_bus.sda == 4 || i2c_bus.sda < 0 ||
-            i2c_bus.scl == 14 || i2c_bus.scl == 5 || i2c_bus.scl < 0) {
-            i2c_bus.sda = (gpio_num_t)SYS_I2C_SDA;
-            i2c_bus.scl = (gpio_num_t)SYS_I2C_SCL;
-            count++;
+#if defined(SOC_HP_I2C_NUM) && SOC_HP_I2C_NUM < 2 && !defined(BRUCE_BOARD_HAS_SOFTWARE_I2C) && !defined(ESP32C5_DEVKITC_1_TFT)
+        if (sys_i2c.sda >= 0 && sys_i2c.scl >= 0) {
+            log_e("I2C Pins cannot be changed on this board, using default values");
+            i2c_bus = sys_i2c;
+        } else {
+            i2c_bus.fromJson(root["i2c_bus"].as<JsonObject>());
         }
-        sys_i2c = i2c_bus;
-#elif defined(SOC_HP_I2C_NUM) && SOC_HP_I2C_NUM < 2 && SYS_I2C_SDA >= 0 && SYS_I2C_SCL >= 0 && \
-    !defined(BRUCE_BOARD_HAS_SOFTWARE_I2C)
-        log_e("I2C Pins cannot be changed on this board, using default values");
-        i2c_bus = sys_i2c;
 #else
         i2c_bus.fromJson(root["i2c_bus"].as<JsonObject>());
+#if defined(ESP32C5_DEVKITC_1_TFT)
+        sys_i2c = i2c_bus;
+#endif
 #endif
     } else {
         count++;
@@ -242,6 +239,31 @@ void BruceConfigPins::fromJson(JsonObject obj) {
     }
     if (!root["GPS_bus"].isNull()) {
         gps_bus.fromJson(root["GPS_bus"].as<JsonObject>());
+    } else {
+        count++;
+        log_e("Fail");
+    }
+    if (!root["badusb_bus"].isNull()) {
+        badusb_bus.fromJson(root["badusb_bus"].as<JsonObject>());
+    } else {
+        count++;
+        log_e("Fail");
+    }
+
+    if (!root["speaker_bus"].isNull()) {
+        speaker_bus.fromJson(root["speaker_bus"].as<JsonObject>());
+    } else {
+        count++;
+        log_e("Fail");
+    }
+    if (!root["mic_bus"].isNull()) {
+        mic_bus.fromJson(root["mic_bus"].as<JsonObject>());
+    } else {
+        count++;
+        log_e("Fail");
+    }
+    if (!root["buzzer"].isNull()) {
+        buzzer = root["buzzer"].as<int>();
     } else {
         count++;
         log_e("Fail");
@@ -290,7 +312,7 @@ void BruceConfigPins::toJson(JsonObject obj) const {
     JsonObject _ST25R = root["ST25R_Pins"].to<JsonObject>();
     ST25R_bus.toJson(_ST25R);
 #endif
-    JsonObject _si2c = root["sys_i2c"].to<JsonObject>();
+    JsonObject _si2c = root["sys_i2c"].as<JsonObject>();
     sys_i2c.toJson(_si2c);
     JsonObject _di2c = root["i2c_bus"].to<JsonObject>();
     i2c_bus.toJson(_di2c);
@@ -298,6 +320,13 @@ void BruceConfigPins::toJson(JsonObject obj) const {
     uart_bus.toJson(_uart);
     JsonObject _gps = root["GPS_bus"].to<JsonObject>();
     gps_bus.toJson(_gps);
+    JsonObject _badusb = root["badusb_bus"].to<JsonObject>();
+    badusb_bus.toJson(_badusb);
+    JsonObject _spkr = root["speaker_bus"].to<JsonObject>();
+    speaker_bus.toJson(_spkr);
+    JsonObject _mic = root["mic_bus"].to<JsonObject>();
+    mic_bus.toJson(_mic);
+    root["buzzer"] = buzzer;
 }
 
 void BruceConfigPins::loadFile(JsonDocument &jsonDoc, bool checkFS) {
@@ -413,6 +442,10 @@ void BruceConfigPins::validateConfig() {
     validateI2CPins(i2c_bus);
     validateUARTPins(uart_bus);
     validateUARTPins(gps_bus);
+    validateUARTPins(badusb_bus);
+    validateSpeakerPins(speaker_bus);
+    validateMicPins(mic_bus);
+    validateBuzzerPin();
 }
 #if !defined(LITE_VERSION)
 void BruceConfigPins::setLoRaPins(SPIPins value) {
@@ -461,24 +494,23 @@ void BruceConfigPins::setSpiPins(SPIPins value) {
 }
 
 void BruceConfigPins::setI2CPins(I2CPins value) {
-    validateI2CPins(value);
     i2c_bus = value;
-    sys_i2c = value;
-    saveFile();
-#if defined(HAS_RTC)
-    Wire.end();
-    if (value.sda >= 0 && value.scl >= 0) {
-        pinMode(value.sda, INPUT_PULLUP);
-        pinMode(value.scl, INPUT_PULLUP);
-        Wire.begin(value.sda, value.scl);
-    } else {
-        Wire.begin();
-    }
-    setSysI2CBus(&Wire);
-    _rtc.setPins(value.sda, value.scl);
-    _rtc.setWire(&Wire);
-    _rtc.begin();
+    validateI2CPins(i2c_bus);
+#if defined(ESP32C5_DEVKITC_1_TFT)
+    sys_i2c = i2c_bus;
+    if (i2c_bus.sda >= 0 && i2c_bus.scl >= 0) {
+        Wire.end();
+        pinMode(i2c_bus.sda, INPUT_PULLUP);
+        pinMode(i2c_bus.scl, INPUT_PULLUP);
+        Wire.begin(i2c_bus.sda, i2c_bus.scl);
+#if defined(HAS_RTC_DS3231)
+        _rtc.setPins(i2c_bus.sda, i2c_bus.scl);
+        _rtc.setWire(&Wire);
+        _rtc.begin();
 #endif
+    }
+#endif
+    saveFile();
 }
 
 void BruceConfigPins::setUARTPins(UARTPins value) {
@@ -610,4 +642,41 @@ void BruceConfigPins::validateGpsBaudrateValue() {
     if (gpsBaudrate != 9600 && gpsBaudrate != 19200 && gpsBaudrate != 57600 && gpsBaudrate != 38400 &&
         gpsBaudrate != 115200)
         gpsBaudrate = 9600;
+}
+
+void BruceConfigPins::setSpeakerPins(SpeakerPins value) {
+    validateSpeakerPins(value);
+    speaker_bus = value;
+    saveFile();
+}
+
+void BruceConfigPins::setMicPins(MicPins value) {
+    validateMicPins(value);
+    mic_bus = value;
+    saveFile();
+}
+
+void BruceConfigPins::setBuzzerPin(int value) {
+    buzzer = value;
+    validateBuzzerPin();
+    saveFile();
+}
+
+void BruceConfigPins::validateSpeakerPins(SpeakerPins &value) {
+    if (value.bclk < 0 || value.bclk > GPIO_PIN_COUNT) value.bclk = GPIO_NUM_NC;
+    if (value.ws < 0 || value.ws > GPIO_PIN_COUNT) value.ws = GPIO_NUM_NC;
+    if (value.dout < 0 || value.dout > GPIO_PIN_COUNT) value.dout = GPIO_NUM_NC;
+    if (value.mclk < 0 || value.mclk > GPIO_PIN_COUNT) value.mclk = GPIO_NUM_NC;
+}
+
+void BruceConfigPins::validateMicPins(MicPins &value) {
+    if (value.clk < 0 || value.clk > GPIO_PIN_COUNT) value.clk = GPIO_NUM_NC;
+    if (value.ws < 0 || value.ws > GPIO_PIN_COUNT) value.ws = GPIO_NUM_NC;
+    if (value.data < 0 || value.data > GPIO_PIN_COUNT) value.data = GPIO_NUM_NC;
+    if (value.type != MIC_TYPE_PDM && value.type != MIC_TYPE_I2S_MSB && value.type != MIC_TYPE_I2S_PHILIPS)
+        value.type = MIC_TYPE_PDM;
+}
+
+void BruceConfigPins::validateBuzzerPin() {
+    if (buzzer < 0 || buzzer > GPIO_PIN_COUNT) buzzer = -1;
 }
